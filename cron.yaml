@@ -1,0 +1,4 @@
+cron:
+- description: fetch data to update db
+  url: /update
+  schedule: every 10 minutes
