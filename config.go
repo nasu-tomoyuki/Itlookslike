@@ -2,6 +2,9 @@ package itlookslike
 
 const ApiUrl = "http://weather.olp.yahooapis.jp/v1/place?coordinates=%s&appid=%s"
 
+// 雨と判断する下限値 mm/h
+const RainThreshould = 0.5
+
 // 予報位置。表示用
 const SpotName = "新宿"
 const FeedUri = "http://weather.yahoo.co.jp/weather/jp/13/4410/13104.html"

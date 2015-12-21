@@ -108,7 +108,6 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 
 // フィードをパースする
 func parseFeed(doc *goquery.Document) (observation WeatherInfo, forecasts WeatherInfos) {
-
 	forecasts = make(WeatherInfos, 0, 10)
 	inputDateLayout := "200601021504"
 
@@ -148,9 +147,10 @@ func makeResult(unixTime int64, lastResult *Result, observation *WeatherInfo, fo
 	}
 
 	// 降ってる
-	if 0 < observation.Rainfall {
+	if observation.Rainfall > RainThreshould {
 		return makeStatusRain(unixTime, lastResult, observation, forecasts)
 	}
+
 	// 降ってない
 	return makeStatusNoRain(unixTime, lastResult, observation, forecasts)
 }
@@ -170,26 +170,19 @@ func getTextOfIntervalTime(timeLeft int64) string {
 func makeStatusNoRain(unixTime int64, lastResult *Result, observation *WeatherInfo, forecasts WeatherInfos) (result *Result) {
 	var text string
 
-	// 今まで雨が降っていた
-	if BeginRain < lastResult.Status && lastResult.Status < EndRain {
-		// 前回からあまり時間がたっていないならまだ雨扱い
-		interval := int64(60 * 30)
-		if lastResult.RainTime+interval > unixTime {
-			return &Result{UpdatedTime: unixTime, RainTime: lastResult.RainTime, Status: lastResult.Status, Text: lastResult.Text}
-		}
-
-		// 雨が上がった
-		text = "もう雨は止みました"
-		return &Result{UpdatedTime: unixTime, RainTime: 0, Status: NoRain, Text: text}
-	}
-
 	// 雨が降りそう
 	for _, v := range forecasts {
-		if v.Rainfall != 0 {
+		if v.Rainfall > RainThreshould {
 			rainStatus := getForecastRainStatus(v.Rainfall)
-			text = getTextOfIntervalTime(v.Time-unixTime) + rainStatusAsText[rainStatus] + " が降りそうです"
+			text = getTextOfIntervalTime(v.Time-unixTime) + " " + rainStatusAsText[rainStatus] + " が降りそうです"
 			return &Result{UpdatedTime: unixTime, RainTime: 0, Status: rainStatus, Text: text}
 		}
+	}
+
+	// 今までは雨が降っていた
+	if BeginRain < lastResult.Status && lastResult.Status < EndRain {
+		text = "もう雨は上がりました"
+		return &Result{UpdatedTime: unixTime, RainTime: 0, Status: NoRain, Text: text}
 	}
 
 	// 降っていないし予報もない
