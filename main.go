@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"time"
+	"math"
 )
 
 func init() {
@@ -25,11 +26,11 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 
-	// 更新は日本時間で 11:00 - 24:00 まで
+	// 更新は日本時間で 10:00 - 22:00 まで
 	jst := time.FixedZone("Asia/Tokyo", 9*60*60)
 	nowJST := now.In(jst)
-	if nowJST.Hour() < 11 {
-		fmt.Fprintf(w, "closed (at am11 will open)")
+	if nowJST.Hour() < 10 || 22 < nowJST.Hour() {
+		fmt.Fprintf(w, "Open: 10:00 am - Close: 10:00 pm")
 		return
 	}
 
@@ -75,7 +76,7 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 	// フィードを作成
 	person := atom.Person{Name: FeedUri}
 	feed := atom.Feed{
-		Title:   "短期天気予報 (11am から 0am まで更新)",
+		Title:   "短期天気予報 (10:00 am - 10:00 pm 更新)",
 		ID:      FeedUri,
 		Link:    []atom.Link{atom.Link{Rel: "self", Href: FeedUri}},
 		Updated: atom.Time(now),
@@ -144,11 +145,20 @@ func makeResult(unixTime int64, lastResult *Result, observation *WeatherInfo, fo
 		if lastResult.RainTime+interval > unixTime {
 			return &Result{UpdatedTime: unixTime, RainTime: lastResult.RainTime, Status: lastResult.Status, Text: lastResult.Text}
 		}
+		// 降り続いている
+		if observation.Rainfall > RainThreshould {
+			return makeStatusRain(unixTime, lastResult, observation, forecasts)
+		}
 	}
 
-	// 降ってる
+	// 降り始め
 	if observation.Rainfall > RainThreshould {
-		return makeStatusRain(unixTime, lastResult, observation, forecasts)
+		// 20分以内に雨予報がないなら雨扱いにしない
+		rainfall, forecastTime := getRainForecast(forecasts, 1)
+
+		if rainfall > 0 && forecastTime <= 20*60 {
+			return makeStatusRain(unixTime, lastResult, observation, forecasts)
+		}
 	}
 
 	// 降ってない
@@ -166,17 +176,44 @@ func getTextOfIntervalTime(timeLeft int64) string {
 	return "もうすぐ"
 }
 
-// 雨ではない
-func makeStatusNoRain(unixTime int64, lastResult *Result, observation *WeatherInfo, forecasts WeatherInfos) (result *Result) {
-	var text string
-
-	// 雨が降りそう
+// 複数回の予報を必要とすることで雨予報の感度を落とす
+func getRainForecast(forecasts WeatherInfos, requireCount int) (rainfall float64, time int64) {
+	num := 0
 	for _, v := range forecasts {
 		if v.Rainfall > RainThreshould {
-			rainStatus := getForecastRainStatus(v.Rainfall)
-			text = getTextOfIntervalTime(v.Time-unixTime) + " " + rainStatusAsText[rainStatus] + " が降りそうです"
-			return &Result{UpdatedTime: unixTime, RainTime: 0, Status: rainStatus, Text: text}
+			num++
 		}
+	}
+
+	// 降りそうではない
+	if num < requireCount {
+		return
+	}
+
+	var t int64
+	t = math.MaxInt64
+	for _, v := range forecasts {
+		if v.Rainfall > rainfall {
+			rainfall = v.Rainfall
+		}
+		if v.Time < t {
+			t = v.Time
+		}
+	}
+	time = t
+	return
+}
+
+// 雨ではない
+func makeStatusNoRain(unixTime int64, lastResult *Result, observation *WeatherInfo, forecasts WeatherInfos) (result *Result) {
+	rainfall, forecastTime := getRainForecast(forecasts, 2)
+
+	var text string
+	// 雨が降りそう
+	if rainfall > 0 {
+		rainStatus := getForecastRainStatus(rainfall)
+		text = getTextOfIntervalTime(forecastTime-unixTime) + " " + rainStatusAsText[rainStatus] + " が降りそうです"
+		return &Result{UpdatedTime: unixTime, RainTime: 0, Status: rainStatus, Text: text}
 	}
 
 	// 今までは雨が降っていた
