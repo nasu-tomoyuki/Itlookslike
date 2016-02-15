@@ -156,7 +156,7 @@ func makeResult(unixTime int64, lastResult *Result, observation *WeatherInfo, fo
 		// 20分以内に雨予報がないなら雨扱いにしない
 		rainfall, forecastTime := getRainForecast(forecasts, 1)
 
-		if rainfall > 0 && forecastTime <= 20*60 {
+		if rainfall > 0 && forecastTime-unixTime <= 20*60 {
 			return makeStatusRain(unixTime, lastResult, observation, forecasts)
 		}
 	}
