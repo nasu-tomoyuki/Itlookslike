@@ -42,7 +42,7 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 	doc, _ := goquery.NewDocumentFromResponse(resp)
 
 	// xml をパース
-	observation, forecasts := parseFeed(doc)
+	observation, forecasts := parseFeed(doc, jst)
 
 	// 前回のデータを取得
 	noData := false
@@ -108,13 +108,13 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // フィードをパースする
-func parseFeed(doc *goquery.Document) (observation WeatherInfo, forecasts WeatherInfos) {
+func parseFeed(doc *goquery.Document, loc *time.Location) (observation WeatherInfo, forecasts WeatherInfos) {
 	forecasts = make(WeatherInfos, 0, 10)
 	inputDateLayout := "200601021504"
 
 	doc.Find("YDF Feature Property WeatherList Weather").Each(func(i int, s *goquery.Selection) {
 		t := s.Find("Type").Text()
-		d, _ := time.Parse(inputDateLayout, s.Find("Date").Text())
+		d, _ := time.ParseInLocation(inputDateLayout, s.Find("Date").Text(), loc)
 		ut := d.Unix()
 		r := s.Find("Rainfall").Text()
 		rf, _ := strconv.ParseFloat(r, 64)
